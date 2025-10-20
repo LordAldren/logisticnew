@@ -37,22 +37,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password'])) {
 
     if ($new_password !== $confirm_password) {
         $message = "<div class='message-banner error'>Passwords do not match.</div>";
-        $show_form = true; // Show form again
+        $show_form = true; 
     } elseif (strlen($new_password) < 6) {
         $message = "<div class='message-banner error'>Password must be at least 6 characters long.</div>";
-        $show_form = true; // Show form again
+        $show_form = true; 
     } else {
-        // Hash the new password
         $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
 
         $conn->begin_transaction();
         try {
-            // Update user's password
             $update_stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
             $update_stmt->bind_param("si", $hashed_password, $post_user_id);
             $update_stmt->execute();
 
-            // Delete the token
             $delete_stmt = $conn->prepare("DELETE FROM password_resets WHERE token = ?");
             $delete_stmt->bind_param("s", $post_token);
             $delete_stmt->execute();
@@ -67,7 +64,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password'])) {
         }
     }
 }
-
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -76,11 +72,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password'])) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Reset Password - SLATE System</title>
   <link rel="stylesheet" href="login-style.css">
-   <style>
-      .message-banner { padding: 1rem; margin-bottom: 1.5rem; border-radius: 0.35rem; color: white; }
-      .message-banner.success { background-color: #1cc88a; }
-      .message-banner.error { background-color: #e74a3b; }
-  </style>
 </head>
 <body class="login-page-body">
   <div class="main-container">
@@ -103,7 +94,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['reset_password'])) {
           <?php endif; ?>
 
           <div style="margin-top: 1.5rem;">
-            <a href="login.php" style="color: #00c6ff; text-decoration: none;">&larr; Back to Login</a>
+            <a href="login.php" class="back-link">&larr; Back to Login</a>
           </div>
         </div>
       </div>
