@@ -1,13 +1,12 @@
 <?php
 session_start();
 
+// If user is already logged in, redirect by role
 if (isset($_SESSION["loggedin"]) && $_SESSION["loggedin"] === true) {
-    // Redirect based on role if already logged in
     if ($_SESSION['role'] === 'driver') {
-        // Corrected path to the mobile app module
-        header("location: ../modules/mfc/mobile_app.php");
+        header("Location: ../modules/mfc/mobile_app.php");
     } else {
-        header("location: ../landpage.php");
+        header("Location: ../landpage.php");
     }
     exit;
 }
@@ -17,67 +16,79 @@ require_once '../config/db_connect.php';
 $username = "";
 $error_message = "";
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $username = trim($_POST["username"]);
-    $password = trim($_POST["password"]);
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    // Trim and sanitize inputs
+    $username = trim($_POST["username"] ?? '');
+    $password = trim($_POST["password"] ?? '');
 
+    // Check if fields are filled
     if (empty($username) || empty($password)) {
         $error_message = "Please enter both username and password.";
     } else {
-        $sql = "SELECT id, username, password, role, failed_login_attempts, lockout_until FROM users WHERE username = ?";
-        
+        // Prepare SQL to get user info by username
+        $sql = "SELECT id, username, password, role, failed_login_attempts, lockout_until 
+                FROM users 
+                WHERE username = ?";
+
         if ($stmt = $conn->prepare($sql)) {
             $stmt->bind_param("s", $username);
-            
+
             if ($stmt->execute()) {
                 $stmt->store_result();
-                
-                if ($stmt->num_rows == 1) {                    
+
+                if ($stmt->num_rows === 1) {
                     $stmt->bind_result($id, $db_username, $hashed_password, $role, $failed_attempts, $lockout_until);
-                    if ($stmt->fetch()) {
-                        
-                        if ($lockout_until !== null) {
-                            $now = new DateTime();
-                            $lockout_time = new DateTime($lockout_until);
-                            if ($now < $lockout_time) {
-                                $error_message = "Account is locked. Please try again later.";
-                            }
+                    $stmt->fetch();
+
+                    // Check lockout time
+                    if (!empty($lockout_until)) {
+                        $now = new DateTime();
+                        $lockout_time = new DateTime($lockout_until);
+                        if ($now < $lockout_time) {
+                            $error_message = "Account is locked. Please try again later.";
                         }
+                    }
 
-                        if (empty($error_message)) {
-                            if (password_verify($password, $hashed_password)) {
-                                // Reset failed login attempts
-                                $reset_stmt = $conn->prepare("UPDATE users SET failed_login_attempts = 0, lockout_until = NULL WHERE id = ?");
-                                $reset_stmt->bind_param("i", $id);
-                                $reset_stmt->execute();
-                                $reset_stmt->close();
+                    // Continue only if not locked
+                    if (empty($error_message)) {
+                        if (password_verify($password, $hashed_password)) {
+                            // Reset failed attempts
+                            $reset = $conn->prepare("UPDATE users 
+                                                     SET failed_login_attempts = 0, lockout_until = NULL 
+                                                     WHERE id = ?");
+                            $reset->bind_param("i", $id);
+                            $reset->execute();
+                            $reset->close();
 
-                                // Set a temporary session to indicate user has passed password check
-                                $_SESSION['verification_user_id'] = $id;
-                                $_SESSION['verification_role'] = $role; // Store role temporarily
-                                
-                                // Redirect to the new QR scanning page (now in auth folder)
-                                header("location: scan_qr_id.php");
-                                exit;
+                            // Store session for verified user
+                            $_SESSION['verification_user_id'] = $id;
+                            $_SESSION['verification_role'] = $role;
 
+                            // Redirect to QR verification page
+                            header("Location: scan_qr_id.php");
+                            exit;
+                        } else {
+                            // Increment failed attempts
+                            $failed_attempts++;
+                            $max_attempts = 5;
+
+                            if ($failed_attempts >= $max_attempts) {
+                                $lock_time = (new DateTime())->add(new DateInterval("PT15M"))->format('Y-m-d H:i:s');
+                                $lock_stmt = $conn->prepare("UPDATE users 
+                                                             SET failed_login_attempts = ?, lockout_until = ? 
+                                                             WHERE id = ?");
+                                $lock_stmt->bind_param("isi", $failed_attempts, $lock_time, $id);
+                                $lock_stmt->execute();
+                                $lock_stmt->close();
+
+                                $error_message = "Account locked for 15 minutes due to too many failed attempts.";
                             } else {
-                                // Handle failed login attempts
-                                $failed_attempts++;
-                                $max_attempts = 5;
-                                if ($failed_attempts >= $max_attempts) {
-                                    $lockout_until_time = (new DateTime())->add(new DateInterval("PT15M"))->format('Y-m-d H:i:s');
-                                    $lock_stmt = $conn->prepare("UPDATE users SET failed_login_attempts = ?, lockout_until = ? WHERE id = ?");
-                                    $lock_stmt->bind_param("isi", $failed_attempts, $lockout_until_time, $id);
-                                    $lock_stmt->execute();
-                                    $lock_stmt->close();
-                                    $error_message = "Account locked for 15 minutes due to too many failed attempts.";
-                                } else {
-                                    $update_stmt = $conn->prepare("UPDATE users SET failed_login_attempts = ? WHERE id = ?");
-                                    $update_stmt->bind_param("ii", $failed_attempts, $id);
-                                    $update_stmt->execute();
-                                    $update_stmt->close();
-                                    $error_message = "Invalid username or password.";
-                                }
+                                $update = $conn->prepare("UPDATE users SET failed_login_attempts = ? WHERE id = ?");
+                                $update->bind_param("ii", $failed_attempts, $id);
+                                $update->execute();
+                                $update->close();
+
+                                $error_message = "Invalid username or password.";
                             }
                         }
                     }
@@ -85,7 +96,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $error_message = "Invalid username or password.";
                 }
             } else {
-                $error_message = "Oops! Something went wrong.";
+                $error_message = "Something went wrong while checking your credentials.";
             }
             $stmt->close();
         }
@@ -93,6 +104,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $conn->close();
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
