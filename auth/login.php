@@ -40,17 +40,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $stmt->bind_result($id, $db_username, $hashed_password, $role, $failed_attempts, $lockout_until);
                     $stmt->fetch();
 
-                    // Check lockout time
-                    if (!empty($lockout_until)) {
-                        $now = new DateTime();
-                        $lockout_time = new DateTime($lockout_until);
-                        if ($now < $lockout_time) {
-                            $error_message = "Account is locked. Please try again later.";
-                        }
-                    }
+                    // Check lockout time (Disabling the check temporarily)
+                    $is_locked = false;
+                    // if (!empty($lockout_until)) {
+                    //     $now = new DateTime();
+                    //     $lockout_time = new DateTime($lockout_until);
+                    //     if ($now < $lockout_time) {
+                    //         $error_message = "Account is locked. Please try again later.";
+                    //         $is_locked = true;
+                    //     }
+                    // }
 
                     // Continue only if not locked
-                    if (empty($error_message)) {
+                    if (empty($error_message) && !$is_locked) {
                         if (password_verify($password, $hashed_password)) {
                             // Reset failed attempts
                             $reset = $conn->prepare("UPDATE users 
